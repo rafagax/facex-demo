@@ -1,26 +1,23 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { motion, useMotionValue, useSpring, AnimatePresence } from 'framer-motion';
+import { motion, useMotionValue, useSpring } from 'framer-motion';
 import './App.css';
 
 /* ══════════════════════════════════════════
-   WORD-BY-WORD KINETIC TITLE REVEAL
+   WORD-BY-WORD MASK REVEAL
    ══════════════════════════════════════════ */
-const KineticTitle = ({ text, delay = 0, className = '' }) => {
+const WordReveal = ({ text, delay = 0, as = 'span', className = '' }) => {
+  const Tag = motion[as] || motion.span;
   const words = text.split(' ');
   return (
-    <span className={`kinetic-title ${className}`}>
+    <span className={`word-reveal ${className}`}>
       {words.map((word, i) => (
-        <span key={i} className="kinetic-word-wrap">
+        <span key={i} className="word-mask">
           <motion.span
-            className="kinetic-word"
-            initial={{ y: '115%', opacity: 0 }}
-            whileInView={{ y: '0%', opacity: 1 }}
-            viewport={{ once: true, margin: '-20px' }}
-            transition={{
-              duration: 1.1,
-              delay: delay + i * 0.09,
-              ease: [0.76, 0, 0.24, 1]
-            }}
+            className="word-inner"
+            initial={{ y: '105%' }}
+            whileInView={{ y: '0%' }}
+            viewport={{ once: true, margin: '-10px' }}
+            transition={{ duration: 0.9, delay: delay + i * 0.1, ease: [0.76, 0, 0.24, 1] }}
           >
             {word}
           </motion.span>
@@ -31,243 +28,173 @@ const KineticTitle = ({ text, delay = 0, className = '' }) => {
 };
 
 /* ══════════════════════════════════════════
-   ANIMATED 1PX LINE
+   FADE IN ON SCROLL
    ══════════════════════════════════════════ */
-const LineReveal = ({ accent = false, delay = 0 }) => (
+const FadeIn = ({ children, delay = 0, y = 20 }) => (
   <motion.div
-    className={accent ? 'line-accent' : 'line-separator'}
+    initial={{ opacity: 0, y }}
+    whileInView={{ opacity: 1, y: 0 }}
+    viewport={{ once: true, margin: '-20px' }}
+    transition={{ duration: 0.9, delay, ease: [0.76, 0, 0.24, 1] }}
+  >
+    {children}
+  </motion.div>
+);
+
+/* ══════════════════════════════════════════
+   LINE REVEAL
+   ══════════════════════════════════════════ */
+const Line = ({ delay = 0, cyan = false }) => (
+  <motion.div
+    className={cyan ? 'divider divider--cyan' : 'divider'}
     initial={{ scaleX: 0 }}
     whileInView={{ scaleX: 1 }}
     viewport={{ once: true }}
-    transition={{ duration: 1.6, delay, ease: [0.76, 0, 0.24, 1] }}
+    transition={{ duration: 1.4, delay, ease: [0.76, 0, 0.24, 1] }}
     style={{ transformOrigin: 'left' }}
   />
 );
 
 /* ══════════════════════════════════════════
-   BENTO CARD w/ SPOTLIGHT EFFECT
+   PARTICLE CANVAS — HERO ONLY
    ══════════════════════════════════════════ */
-const BentoCard = ({ children, className = '', style = {}, area }) => {
-  const cardRef = useRef(null);
-  const [spotlight, setSpotlight] = useState({ x: 0, y: 0, opacity: 0 });
+const ParticleCanvas = () => {
+  const ref = useRef(null);
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    let W = canvas.width = canvas.offsetWidth;
+    let H = canvas.height = canvas.offsetHeight;
+    const mouse = { x: W / 2, y: H / 2 };
 
-  const handleMouseMove = useCallback((e) => {
-    const rect = cardRef.current.getBoundingClientRect();
-    setSpotlight({
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-      opacity: 1
-    });
+    const onMove = (e) => { mouse.x = e.clientX; mouse.y = e.clientY; };
+    const onResize = () => {
+      W = canvas.width = canvas.offsetWidth;
+      H = canvas.height = canvas.offsetHeight;
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('resize', onResize);
+
+    const N = 50;
+    const pts = Array.from({ length: N }, () => ({
+      x: Math.random() * W, y: Math.random() * H,
+      vx: (Math.random() - 0.5) * 0.6,
+      vy: (Math.random() - 0.5) * 0.6,
+    }));
+
+    let raf;
+    const draw = () => {
+      ctx.clearRect(0, 0, W, H);
+      pts.forEach(p => {
+        p.x += p.vx; p.y += p.vy;
+        if (p.x < 0 || p.x > W) p.vx *= -1;
+        if (p.y < 0 || p.y > H) p.vy *= -1;
+
+        // Dot
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 1, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,255,255,0.09)';
+        ctx.fill();
+
+        // Connection to mouse
+        const dm = Math.hypot(p.x - mouse.x, p.y - mouse.y);
+        if (dm < 140) {
+          ctx.beginPath();
+          ctx.moveTo(p.x, p.y);
+          ctx.lineTo(mouse.x, mouse.y);
+          ctx.strokeStyle = `rgba(0,243,255,${(1 - dm / 140) * 0.22})`;
+          ctx.lineWidth = 0.7;
+          ctx.stroke();
+        }
+
+        // Connection to nearby particles
+        pts.forEach(q => {
+          const d = Math.hypot(p.x - q.x, p.y - q.y);
+          if (d < 90) {
+            ctx.beginPath();
+            ctx.moveTo(p.x, p.y);
+            ctx.lineTo(q.x, q.y);
+            ctx.strokeStyle = `rgba(255,255,255,${(1 - d / 90) * 0.04})`;
+            ctx.lineWidth = 0.4;
+            ctx.stroke();
+          }
+        });
+      });
+      raf = requestAnimationFrame(draw);
+    };
+    draw();
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('resize', onResize);
+    };
   }, []);
+  return <canvas ref={ref} className="particle-canvas" />;
+};
 
-  const handleMouseLeave = useCallback(() => {
-    setSpotlight(prev => ({ ...prev, opacity: 0 }));
+/* ══════════════════════════════════════════
+   SERVICE CARD
+   ══════════════════════════════════════════ */
+const ServiceCard = ({ service, index }) => {
+  const cardRef = useRef(null);
+  const [glow, setGlow] = useState({ x: 0, y: 0, show: false });
+
+  const onMove = useCallback((e) => {
+    const r = cardRef.current.getBoundingClientRect();
+    setGlow({ x: e.clientX - r.left, y: e.clientY - r.top, show: true });
   }, []);
 
   return (
     <motion.div
       ref={cardRef}
-      className={`bento-card ${className}`}
-      style={{ gridArea: area, ...style }}
-      onMouseMove={handleMouseMove}
-      onMouseLeave={handleMouseLeave}
-      initial={{ opacity: 0, y: 24 }}
+      className="svc-card"
+      onMouseMove={onMove}
+      onMouseLeave={() => setGlow(g => ({ ...g, show: false }))}
+      initial={{ opacity: 0, y: 30 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: '-30px' }}
-      transition={{ duration: 0.8, ease: [0.76, 0, 0.24, 1] }}
+      transition={{ duration: 0.8, delay: index * 0.1, ease: [0.76, 0, 0.24, 1] }}
     >
-      {/* Spotlight radial that follows the cursor */}
+      {/* Spotlight */}
       <div
-        className="bento-spotlight"
+        className="svc-spotlight"
         style={{
-          left: spotlight.x,
-          top: spotlight.y,
-          opacity: spotlight.opacity
+          left: glow.x, top: glow.y,
+          opacity: glow.show ? 1 : 0
         }}
       />
-      {children}
-    </motion.div>
-  );
-};
-
-/* ══════════════════════════════════════════
-   FAKE MINI BAR CHART (CSS-only data UI)
-   ══════════════════════════════════════════ */
-const MiniBars = ({ heights = [60, 80, 45, 90, 55, 70, 40, 85], accent = false }) => (
-  <div className="mini-bars">
-    {heights.map((h, i) => (
-      <motion.div
-        key={i}
-        className={`mini-bar ${accent ? 'mini-bar--accent' : ''}`}
-        initial={{ scaleY: 0 }}
-        whileInView={{ scaleY: 1 }}
-        viewport={{ once: true }}
-        transition={{ duration: 0.6, delay: i * 0.06, ease: 'easeOut' }}
-        style={{ height: `${h}%`, transformOrigin: 'bottom' }}
-      />
-    ))}
-  </div>
-);
-
-/* ══════════════════════════════════════════
-   FAKE PROGRESS BAR
-   ══════════════════════════════════════════ */
-const ProgressBar = ({ label, value, delay = 0 }) => (
-  <div className="progress-item">
-    <div className="progress-meta">
-      <span className="progress-label">{label}</span>
-      <span className="progress-value">{value}%</span>
-    </div>
-    <div className="progress-track">
-      <motion.div
-        className="progress-fill"
-        initial={{ width: 0 }}
-        whileInView={{ width: `${value}%` }}
-        viewport={{ once: true }}
-        transition={{ duration: 1.2, delay, ease: [0.76, 0, 0.24, 1] }}
-      />
-    </div>
-  </div>
-);
-
-/* ══════════════════════════════════════════
-   CANVAS PARTICLE NETWORK
-   ══════════════════════════════════════════ */
-const CyberCanvas = () => {
-  const canvasRef = useRef(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    let width = canvas.width = window.innerWidth;
-    let height = canvas.height = window.innerHeight;
-    const mouse = { x: width / 2, y: height / 2 };
-
-    const onMouseMove = (e) => { mouse.x = e.clientX; mouse.y = e.clientY; };
-    const onResize = () => {
-      width = canvas.width = window.innerWidth;
-      height = canvas.height = window.innerHeight;
-    };
-
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('resize', onResize);
-
-    class Particle {
-      constructor() {
-        this.reset();
-      }
-      reset() {
-        this.x = Math.random() * width;
-        this.y = Math.random() * height;
-        this.vx = (Math.random() - 0.5) * 0.8;
-        this.vy = (Math.random() - 0.5) * 0.8;
-        this.size = Math.random() * 1.2 + 0.3;
-      }
-      update() {
-        this.x += this.vx;
-        this.y += this.vy;
-        if (this.x < 0 || this.x > width) this.vx *= -1;
-        if (this.y < 0 || this.y > height) this.vy *= -1;
-      }
-      draw() {
-        ctx.fillStyle = 'rgba(200,220,255,0.12)';
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-
-    const particles = Array.from({ length: 60 }, () => new Particle());
-    let raf;
-
-    const animate = () => {
-      ctx.clearRect(0, 0, width, height);
-      particles.forEach(p => {
-        p.update();
-        p.draw();
-        const dx = p.x - mouse.x, dy = p.y - mouse.y;
-        const dist = Math.hypot(dx, dy);
-        if (dist < 160) {
-          ctx.strokeStyle = `rgba(0,220,255,${0.35 - dist / 460})`;
-          ctx.lineWidth = 0.8;
-          ctx.beginPath();
-          ctx.moveTo(p.x, p.y);
-          ctx.lineTo(mouse.x, mouse.y);
-          ctx.stroke();
-          p.x -= dx * 0.008;
-          p.y -= dy * 0.008;
-        }
-        particles.forEach(q => {
-          const d = Math.hypot(p.x - q.x, p.y - q.y);
-          if (d < 100) {
-            ctx.strokeStyle = `rgba(180,200,255,${0.06 - d / 1700})`;
-            ctx.lineWidth = 0.4;
-            ctx.beginPath();
-            ctx.moveTo(p.x, p.y);
-            ctx.lineTo(q.x, q.y);
-            ctx.stroke();
-          }
-        });
-      });
-      raf = requestAnimationFrame(animate);
-    };
-    animate();
-
-    return () => {
-      cancelAnimationFrame(raf);
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('resize', onResize);
-    };
-  }, []);
-
-  return <canvas ref={canvasRef} className="cyber-canvas" />;
-};
-
-/* ══════════════════════════════════════════
-   TICKER
-   ══════════════════════════════════════════ */
-const Ticker = () => {
-  const items = [
-    '// SYSTEM: ONLINE', 'BIOMETRY STREAM ACTIVE',
-    'SYS_OP: OPTIMAL', 'ISO 9001:2015 CERTIFIED',
-    'EST. 1991', '200+ CLIENTS', '300+ PROJECTS',
-    'NODE: PANAMÁ HQ', 'LATAM COVERAGE: ██████ 95%'
-  ];
-  const repeated = [...items, ...items];
-  return (
-    <div className="ticker-wrapper">
-      <div className="ticker-track">
-        {repeated.map((item, i) => (
-          <span key={i} className="ticker-item">{item}</span>
-        ))}
+      {/* Content */}
+      <div className="svc-top">
+        <span className="svc-code">[ SEC: {String(index + 1).padStart(3, '0')} ]</span>
+        <span className="svc-abbr">{service.abbr}</span>
       </div>
-    </div>
+      <h3 className="svc-title">{service.title}</h3>
+      <p className="svc-desc">{service.description}</p>
+      <a href={service.link} className="svc-link" target="_blank" rel="noopener noreferrer">
+        Ver detalles →
+      </a>
+    </motion.div>
   );
 };
 
 /* ══════════════════════════════════════════
    MAIN APP
    ══════════════════════════════════════════ */
-function App() {
+export default function App() {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [cursorPos, setCursorPos] = useState({ x: -100, y: -100 });
-  const [isHovering, setIsHovering] = useState(false);
+  const [hovering, setHovering] = useState(false);
 
-  const springConfig = { stiffness: 350, damping: 30 };
-  const cx = useSpring(useMotionValue(-100), springConfig);
-  const cy = useSpring(useMotionValue(-100), springConfig);
+  // Spring cursor
+  const mx = useMotionValue(-100);
+  const my = useMotionValue(-100);
+  const sx = useSpring(mx, { stiffness: 500, damping: 40 });
+  const sy = useSpring(my, { stiffness: 500, damping: 40 });
 
   useEffect(() => {
-    const onMove = (e) => {
-      cx.set(e.clientX);
-      cy.set(e.clientY);
-      setCursorPos({ x: e.clientX, y: e.clientY });
-    };
+    const onMove = (e) => { mx.set(e.clientX); my.set(e.clientY); };
     const onOver = (e) => {
-      setIsHovering(
-        !!e.target.closest('a, button, .bento-card, .sector-row, .hover-link')
-      );
+      setHovering(!!e.target.closest('a, button, .svc-card'));
     };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseover', onOver);
@@ -281,414 +208,486 @@ function App() {
     {
       title: "Estrategia, Organización y Personas",
       abbr: "EOP",
-      description: "Orientación estratégica, análisis organizacional, gestión del cambio y racionalización de equipos.",
-      link: "https://facex.com/eop/",
-      area: "eop",
-      bars: [55, 75, 90, 60, 85, 70, 95, 65],
-      progress: [{ label: 'CHANGE MGT', value: 92 }, { label: 'STRATEGY', value: 87 }]
+      description: "Orientación estratégica, análisis organizacional, gestión del cambio y desarrollo de capacidades humanas.",
+      link: "https://facex.com/eop/"
     },
     {
       title: "Procesos, Modelos y Sistemas de Gestión",
       abbr: "PMS",
-      description: "Transformación de procesos bajo estándares ISO y modelos BPM de clase mundial.",
-      link: "https://facex.com/pms/",
-      area: "pms",
-      bars: [80, 50, 95, 70, 85, 60, 75, 90],
-      progress: [{ label: 'ISO DEPLOY', value: 96 }, { label: 'BPM INDEX', value: 89 }]
+      description: "Transformación de procesos hacia la excelencia bajo estándares internacionales ISO y el enfoque BPM.",
+      link: "https://facex.com/pms/"
     },
     {
       title: "Ingeniería, Mantenimiento y Operaciones",
       abbr: "EMO",
-      description: "Soluciones de ingeniería industrial enfocadas en optimización de procesos y excelencia operacional.",
-      link: "https://facex.com/emo/",
-      area: "emo",
-      bars: [65, 90, 55, 80, 45, 95, 70, 85],
-      progress: [{ label: 'OEE RATE', value: 94 }, { label: 'UPTIME', value: 98 }]
+      description: "Soluciones de ingeniería industrial orientadas a la optimización de activos y excelencia operacional.",
+      link: "https://facex.com/emo/"
     },
     {
       title: "Gestión de Proyectos y Tecnología",
       abbr: "PIT",
-      description: "Gestión de proyectos PMO e implementaciones tecnológicas avanzadas con los enfoques más novedosos.",
-      link: "https://facex.com/pit/",
-      area: "pit",
-      bars: [90, 65, 80, 45, 95, 70, 88, 60],
-      progress: [{ label: 'PMO INDEX', value: 91 }, { label: 'DELIVERY', value: 95 }]
+      description: "Gestión avanzada de proyectos PMO e implementaciones tecnológicas con los enfoques más innovadores.",
+      link: "https://facex.com/pit/"
     }
   ];
 
-  const locations = [
-    { country: "Panamá", isHQ: true, phone: "+507 834-5060", email: "ventas@facex.com", address: "PH Bay Mall Plaza, Av. Balboa, P3, Of. 304" },
-    { country: "Perú", phone: "+51 1 718-5177", email: "peru@facex.com", address: "Calle Las Flores 234, Of. 203, San Isidro" },
-    { country: "Ecuador", phone: "+593 99 578 4484", email: "ecuador@facex.com", address: "Av. Suiza y Checoslovaquia, Edif. Miletus" },
-    { country: "Colombia", phone: "+57 300 929 1607", email: "colombia@facex.com", address: "Cra. 87 No. 17-35, Torres de Capellania" },
-    { country: "Rep. Dominicana", phone: "+1 829 791-9000", email: "rd@facex.com", address: "Calle 4, Jardines Metropolitanos, Edif. Gilsa B1" },
-    { country: "Venezuela", phone: "+58 212 335-7788", email: "venezuela@facex.com", address: "Av. Colinas de Bello Monte, Edif. CC Bello Monte" }
+  const sectors = [
+    "Energía, Hidrocarburos y Petroquímica",
+    "Infraestructura, Gobierno y Salud",
+    "Laboratorios de Calibración y Ensayo",
+    "Manufactura y Servicios",
+    "Servicios Financieros",
+    "Tecnología y Telecomunicaciones"
   ];
 
-  const navLinks = [
-    { label: "Nosotros", href: "#about" },
-    { label: "Servicios", href: "#services" },
-    { label: "Sectores", href: "#sectors" },
-    { label: "Contacto", href: "#contact" }
+  const locations = [
+    { country: "Panamá", isHQ: true, phone: "+507 834-5060", email: "ventas@facex.com", address: "PH Bay Mall Plaza, Av. Balboa, Piso 3, Of. 304" },
+    { country: "Perú", phone: "+51 1 718-5177", email: "peru@facex.com", address: "Calle Las Flores 234, Of. 203, San Isidro, Lima" },
+    { country: "Ecuador", phone: "+593 99 578 4484", email: "ecuador@facex.com", address: "Av. Suiza y Checoslovaquia, Edif. Miletus, Quito" },
+    { country: "Colombia", phone: "+57 300 929 1607", email: "colombia@facex.com", address: "Cra. 87 No. 17-35, Torres de Capellania, Bogotá" },
+    { country: "Rep. Dominicana", phone: "+1 829 791-9000", email: "rd@facex.com", address: "Calle 4, Jardines Metropolitanos, Edif. Gilsa B1, Santiago" },
+    { country: "Venezuela", phone: "+58 212 335-7788", email: "venezuela@facex.com", address: "Av. Colinas de Bello Monte, Edif. CC Bello Monte, P2, Of. 2-K, Caracas" }
   ];
 
   return (
     <>
       {/* FILM GRAIN */}
-      <div className="grain" />
+      <div className="grain" aria-hidden="true" />
 
-      {/* AMBIENT BACKGROUND GLOWS */}
-      <div className="ambient-layer">
-        <div className="glow glow--blue" />
-        <div className="glow glow--purple" />
-        <div className="glow glow--teal" />
+      {/* AMBIENT GLOW */}
+      <div className="bg-glow" aria-hidden="true">
+        <div className="bg-glow__orb bg-glow__orb--a" />
+        <div className="bg-glow__orb bg-glow__orb--b" />
       </div>
 
       {/* CUSTOM CURSOR */}
-      <div className="cursor-wrap">
-        <motion.div className="cursor-dot" style={{ x: cx, y: cy, translateX:'-50%', translateY:'-50%' }} />
+      <div className="cursor" aria-hidden="true">
         <motion.div
-          className="cursor-ring"
-          style={{ x: cx, y: cy, translateX:'-50%', translateY:'-50%' }}
-          animate={{ scale: isHovering ? 1.6 : 1, borderColor: isHovering ? '#00f0ff' : 'rgba(255,255,255,0.25)' }}
-          transition={{ duration: 0.2 }}
+          className="cursor__ring"
+          style={{ x: sx, y: sy, translateX: '-50%', translateY: '-50%' }}
+          animate={{
+            width: hovering ? 44 : 28,
+            height: hovering ? 44 : 28,
+            borderColor: hovering ? 'rgba(0,243,255,0.7)' : 'rgba(255,255,255,0.25)'
+          }}
+          transition={{ duration: 0.25 }}
+        />
+        <motion.div
+          className="cursor__dot"
+          style={{ x: mx, y: my, translateX: '-50%', translateY: '-50%' }}
         />
       </div>
 
-      {/* ── NAV ── */}
-      <nav className="nav">
-        <div className="nav-inner">
-          <a href="#hero" className="nav-brand">
-            <span className="status-dot" />
-            <span className="nav-brand-name">FACEX</span>
-            <span className="nav-brand-sub">GROUP</span>
+      {/* ══════════════════════════════════════
+          NAV
+          ══════════════════════════════════════ */}
+      <nav className="nav" role="navigation">
+        <div className="nav__inner">
+          {/* Logo */}
+          <a href="#hero" className="nav__brand">
+            <span className="nav__brand-dot" aria-hidden="true" />
+            <span className="nav__brand-name">FACEX</span>
+            <span className="nav__brand-divider" aria-hidden="true" />
+            <span className="nav__brand-sub">Consulting Group</span>
           </a>
-          <button
-            className={`hamburger ${menuOpen ? 'active' : ''}`}
-            onClick={() => setMenuOpen(!menuOpen)}
-            aria-label="Menu"
-          >
-            <span /><span /><span />
-          </button>
-          <ul className={`nav-links ${menuOpen ? 'open' : ''}`}>
-            {navLinks.map((l, i) => (
-              <li key={i}><a href={l.href} onClick={() => setMenuOpen(false)}>{l.label}</a></li>
+
+          {/* Desktop links */}
+          <ul className={`nav__links ${menuOpen ? 'nav__links--open' : ''}`} role="list">
+            {['#about', '#services', '#sectors', '#contact'].map((href, i) => (
+              <li key={i}>
+                <a href={href} onClick={() => setMenuOpen(false)}>
+                  {['Nosotros', 'Servicios', 'Sectores', 'Contacto'][i]}
+                </a>
+              </li>
             ))}
             <li>
-              <a href="https://facex.com/contactenos/" className="nav-cta" target="_blank" rel="noopener noreferrer">
-                INICIAR CONSULTA
-              </a>
-            </li>
-          </ul>
-        </div>
-      </nav>
-
-      {/* ── HERO ── */}
-      <section className="hero" id="hero">
-        <CyberCanvas />
-        <div className="hero-inner">
-          <motion.div
-            className="hero-badge"
-            initial={{ opacity: 0, y: -16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.2 }}
-          >
-            <span className="status-dot" />
-            <span>EST. 1991 — CONSULTORÍA INTERNACIONAL</span>
-          </motion.div>
-
-          <h1 className="hero-title">
-            <KineticTitle text="IMPULSAMOS" delay={0.1} />
-            <br />
-            <KineticTitle text="LA" delay={0.3} />
-            {' '}
-            <KineticTitle text="EXCELENCIA" delay={0.4} className="hero-title--outline" />
-            <br />
-            <KineticTitle text="EMPRESARIAL" delay={0.55} />
-          </h1>
-
-          <motion.div
-            className="hero-line-wrap"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.9 }}
-          >
-            <LineReveal accent delay={0.9} />
-          </motion.div>
-
-          <div className="hero-bottom">
-            <motion.p
-              className="hero-sub"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 1.1, duration: 0.9, ease: [0.76, 0, 0.24, 1] }}
-            >
-              Ingeniería táctica de procesos, optimización biométrica de organizaciones y
-              despliegue inteligente de consultoría de alto estándar. Más de 30 años
-              transformando empresas a nivel global.
-            </motion.p>
-            <motion.div
-              className="hero-buttons"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 1.3, duration: 0.8 }}
-            >
-              <a href="#services" className="btn btn--fill">Servicios Activos</a>
               <a
-                href="https://facex.com/wp-content/uploads/2023/10/BROCHURE-FACEX-CONSULTING-GROUP-10-2023-2024.pdf"
-                className="btn"
+                href="https://facex.com/contactenos/"
+                className="nav__cta"
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                Brochure ↗
+                Solicitar Consulta
               </a>
-            </motion.div>
+            </li>
+          </ul>
+
+          {/* Hamburger */}
+          <button
+            className={`hamburger ${menuOpen ? 'hamburger--active' : ''}`}
+            onClick={() => setMenuOpen(v => !v)}
+            aria-label={menuOpen ? 'Cerrar menú' : 'Abrir menú'}
+            aria-expanded={menuOpen}
+          >
+            <span /><span /><span />
+          </button>
+        </div>
+      </nav>
+
+      {/* ══════════════════════════════════════
+          HERO
+          ══════════════════════════════════════ */}
+      <section className="hero" id="hero">
+        <ParticleCanvas />
+
+        <div className="hero__inner">
+          {/* Tag line */}
+          <FadeIn delay={0.1}>
+            <p className="hero__eyebrow">
+              <span className="cyan-dot" aria-hidden="true" />
+              EST. 1991 — Consultoría Internacional
+            </p>
+          </FadeIn>
+
+          {/* Main title */}
+          <h1 className="hero__title">
+            <WordReveal text="Impulsamos" delay={0.2} />
+            <br />
+            <WordReveal text="la Excelencia" delay={0.35} className="hero__title--outline" />
+            <br />
+            <WordReveal text="Empresarial" delay={0.55} />
+          </h1>
+
+          {/* Accent line */}
+          <div className="hero__line">
+            <Line cyan delay={0.8} />
           </div>
 
-          {/* HERO STATS ROW */}
-          <div className="hero-stats">
+          {/* Sub copy + CTAs */}
+          <div className="hero__footer">
+            <FadeIn delay={0.9} y={16}>
+              <p className="hero__sub">
+                Servicios de consultoría de alto valor agregado, innovadores y orientados
+                a resultados concretos. Presencia en 6 países con más de 300 proyectos
+                ejecutados exitosamente.
+              </p>
+            </FadeIn>
+            <FadeIn delay={1.05} y={16}>
+              <div className="hero__ctas">
+                <a href="#services" className="btn btn--solid">Explorar Servicios</a>
+                <a
+                  href="https://facex.com/wp-content/uploads/2023/10/BROCHURE-FACEX-CONSULTING-GROUP-10-2023-2024.pdf"
+                  className="btn btn--ghost"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Descargar Brochure ↗
+                </a>
+              </div>
+            </FadeIn>
+          </div>
+
+          {/* Metrics */}
+          <div className="hero__metrics">
             {[
-              { num: '30+', label: 'AÑOS', bars: [40,60,70,55,80,90,85,75] },
-              { num: '200+', label: 'CLIENTES', bars: [60,80,50,95,70,85,65,90] },
-              { num: '300+', label: 'PROYECTOS', bars: [70,45,90,65,80,55,95,75] },
-              { num: '06', label: 'PAÍSES', bars: [80,60,75,90,50,85,65,95] },
-            ].map((s, i) => (
+              { num: '30+', label: 'Años de experiencia' },
+              { num: '200+', label: 'Clientes atendidos' },
+              { num: '300+', label: 'Proyectos exitosos' },
+              { num: '06', label: 'Países con oficinas' },
+            ].map((m, i) => (
               <motion.div
                 key={i}
-                className="hero-stat"
-                initial={{ opacity: 0, y: 30 }}
+                className="metric"
+                initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 1.5 + i * 0.1, duration: 0.7, ease: [0.76, 0, 0.24, 1] }}
+                transition={{ delay: 1.2 + i * 0.1, duration: 0.7, ease: [0.76, 0, 0.24, 1] }}
               >
-                <span className="hero-stat-num">{s.num}</span>
-                <span className="hero-stat-label">{s.label}</span>
-                <MiniBars heights={s.bars} accent={i === 0} />
+                <span className="metric__num">{m.num}</span>
+                <span className="metric__label">{m.label}</span>
               </motion.div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ── TICKER ── */}
-      <Ticker />
+      {/* ══════════════════════════════════════
+          DATA TICKER
+          ══════════════════════════════════════ */}
+      <div className="ticker" aria-hidden="true">
+        <div className="ticker__track">
+          {Array(4).fill([
+            '// SISTEMA ACTIVO', 'ISO 9001:2015', 'EST. 1991',
+            'PANAMÁ HQ', '200+ CLIENTES', '300+ PROYECTOS', 'LATAM COVERAGE'
+          ]).flat().map((t, i) => (
+            <span key={i} className="ticker__item">{t}</span>
+          ))}
+        </div>
+      </div>
 
-      {/* ── ABOUT ── */}
+      {/* ══════════════════════════════════════
+          ABOUT
+          ══════════════════════════════════════ */}
       <section className="section" id="about">
-        <div className="section-header">
-          <motion.span
-            className="section-tag"
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            viewport={{ once: true }}
-          >
-            [ CORE // CONÓZCANOS ]
-          </motion.span>
-          <LineReveal delay={0.1} />
-          <KineticTitle text="NUESTRO ADN" delay={0.2} className="section-title-kinetic" />
-          <motion.p
-            className="about-intro"
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.9, delay: 0.4 }}
-          >
-            FACEX Consulting Group opera en la intersección entre conocimiento élite y ejecución de alto impacto.
-            Desplegamos herramientas, metodologías y recursos altamente especializados guiados por los más
-            estrictos estándares ISO, modelos de excelencia de clase mundial y el enfoque BPM.
-          </motion.p>
-        </div>
-
-        {/* ADN BENTO */}
-        <div className="bento-about">
-          {[
-            { idx: '001', tag: 'MISIÓN', title: 'Táctica y Estrategia', text: 'Provisión hiper-efectiva de consultoría diferenciada. Movilizamos talento élite para garantizar retornos y transformar empresas desde sus cimientos.', bars: [60,80,55,90,70,85,45,75] },
-            { idx: '002', tag: 'VISIÓN', title: 'Hegemonía de la Calidad', text: 'Posicionamiento de liderazgo total. Estructuramos la excelencia como normativa en todos los modelos de negocio que tocamos.', bars: [80,55,90,65,75,45,95,70] },
-            { idx: '003', tag: 'VALORES', title: 'Manifiesto Operativo', text: 'Excelencia. Sinergia total. Excedentes de valor puros. Integridad radical. Innovación constante. Tenacidad resolutiva.' , bars: [45,90,60,80,70,55,85,75] },
-          ].map((item, i) => (
-            <BentoCard key={i} className="bento-about__card" area={`a${i+1}`}>
-              <div className="card-header-row">
-                <span className="card-tag">[ {item.idx} — {item.tag} ]</span>
-                <span className="status-dot" />
-              </div>
-              <h3 className="card-title">{item.title}</h3>
-              <p className="card-text">{item.text}</p>
-              <MiniBars heights={item.bars} />
-            </BentoCard>
-          ))}
-        </div>
-      </section>
-
-      {/* ── SERVICES BENTO ── */}
-      <section className="section" id="services">
-        <div className="section-header">
-          <motion.span className="section-tag" initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }}>
-            [ SUBSISTEMAS DE CONSULTORÍA ]
-          </motion.span>
-          <LineReveal delay={0.1} />
-          <KineticTitle text="SERVICIOS AVANZADOS" delay={0.2} className="section-title-kinetic" />
-        </div>
-
-        <div className="bento-services">
-          {services.map((svc, i) => (
-            <BentoCard key={i} className={`bento-services__card bento-services__card--${svc.area}`} area={svc.area}>
-              <div className="card-header-row">
-                <span className="card-tag">[ IDX:{String(i+1).padStart(3,'0')} — {svc.abbr} ]</span>
-                <span className="live-badge"><span className="status-dot" /> LIVE</span>
-              </div>
-              <h3 className="card-title card-title--lg">{svc.title}</h3>
-              <p className="card-text">{svc.description}</p>
-              <div className="card-data-block">
-                {svc.progress.map((p, j) => (
-                  <ProgressBar key={j} label={p.label} value={p.value} delay={0.2 + j * 0.15} />
-                ))}
-              </div>
-              <MiniBars heights={svc.bars} accent />
-              <a href={svc.link} className="card-link hover-link" target="_blank" rel="noopener noreferrer">
-                ACCEDER AL MÓDULO →
-              </a>
-            </BentoCard>
-          ))}
-
-          {/* fifth spanning card: contact CTA */}
-          <BentoCard className="bento-services__card bento-services__cta" area="cta">
-            <div className="card-header-row">
-              <span className="card-tag">[ CONTACT // DIRECT ]</span>
-              <span className="status-dot" />
+        <div className="section__inner">
+          <header className="section__header">
+            <FadeIn>
+              <span className="section__tag">[ Conózcanos ]</span>
+            </FadeIn>
+            <Line delay={0.1} />
+            <div className="section__title-wrap">
+              <WordReveal text="Nuestro ADN" delay={0.2} className="section__title" />
             </div>
-            <p className="cta-label">¿Listo para transformar su organización?</p>
-            <a
-              href="https://facex.com/contactenos/"
-              className="btn btn--fill cta-btn hover-link"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              INICIAR CONSULTA AHORA
-            </a>
-            <div className="cta-stat-row">
-              <div className="cta-stat"><span>200+</span> Clientes</div>
-              <div className="cta-stat"><span>300+</span> Proyectos</div>
-              <div className="cta-stat"><span>06</span> Países</div>
-            </div>
-          </BentoCard>
-        </div>
-      </section>
+          </header>
 
-      {/* ── SECTORS ── */}
-      <section className="section" id="sectors">
-        <div className="section-header">
-          <motion.span className="section-tag" initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }}>
-            [ APLICABILIDAD SECTORIAL ]
-          </motion.span>
-          <LineReveal delay={0.1} />
-          <KineticTitle text="SECTORES" delay={0.2} className="section-title-kinetic" />
-        </div>
-        <div className="sectors-list">
-          {[
-            "Energía, Hidrocarburos y Petroquímica",
-            "Infraestructura, Gobierno y Salud",
-            "Laboratorios de Calibración y Ensayo",
-            "Manufactura y Servicios",
-            "Servicios Financieros",
-            "Tecnología y Telecomunicaciones"
-          ].map((sector, i) => (
-            <motion.div
-              className="sector-row"
-              key={i}
-              initial={{ opacity: 0, x: -20 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true, margin: '-10px' }}
-              transition={{ duration: 0.6, delay: i * 0.08 }}
-            >
-              <span className="sector-num">{String(i + 1).padStart(2, '0')}</span>
-              <span className="sector-name">{sector}</span>
-              <span className="sector-arrow">→</span>
-            </motion.div>
-          ))}
-        </div>
-      </section>
+          <FadeIn delay={0.3}>
+            <p className="about__lead">
+              FACEX Consulting Group es una empresa de consultoría enfocada en servicios de
+              alto valor agregado, fundamentados en metodologías probadas, tecnologías de punta
+              y un Sistema de Gestión de Excelencia certificado bajo Normas ISO y el enfoque BPM.
+            </p>
+          </FadeIn>
 
-      {/* ── VALUE PROPS BENTO ── */}
-      <section className="section section--dark">
-        <div className="section-header">
-          <motion.span className="section-tag" initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }}>
-            [ PROPUESTA DE VALOR ]
-          </motion.span>
-          <LineReveal delay={0.1} />
-          <KineticTitle text="POR QUÉ FACEX" delay={0.2} className="section-title-kinetic" />
-        </div>
-        <div className="bento-value">
-          {[
-            { title: "Experiencia Internacional", desc: "30+ años en operación global en múltiples industrias y culturas corporativas.", val: 30 },
-            { title: "Alta Especialización", desc: "Empresa mediana con alta especialización vs. corporaciones generalistas.", val: 94 },
-            { title: "Equipo Multidisciplinario", desc: "Expertos de élite con presencia local en cada país.", val: 88 },
-            { title: "Metodología Probada", desc: "200+ clientes y 300+ proyectos con metodologías de clase mundial.", val: 97 },
-            { title: "Oficina PMO", desc: "FACEX PMO garantiza la gestión óptima de todos los proyectos.", val: 92 },
-            { title: "Énfasis Total", desc: "Dedicación absoluta y compromiso inquebrantable con el éxito.", val: 99 }
-          ].map((item, i) => (
-            <BentoCard key={i} className="bento-value__card">
-              <span className="card-tag">[ {String(i + 1).padStart(2, '0')} ]</span>
-              <h4 className="card-title">{item.title}</h4>
-              <p className="card-text">{item.desc}</p>
-              <ProgressBar label="PERFORMANCE" value={item.val} delay={0.1} />
-            </BentoCard>
-          ))}
-        </div>
-      </section>
-
-      {/* ── CONTACT / LOCATIONS ── */}
-      <section className="section" id="contact">
-        <div className="section-header">
-          <motion.span className="section-tag" initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }}>
-            [ NODOS FÍSICOS GLOBALES ]
-          </motion.span>
-          <LineReveal delay={0.1} />
-          <KineticTitle text="OFICINAS" delay={0.2} className="section-title-kinetic" />
-        </div>
-        <div className="bento-locations">
-          {locations.map((loc, i) => (
-            <BentoCard key={i} className="bento-loc__card">
-              <div className="card-header-row">
-                <span className="card-tag">[ NODE {String(i + 1).padStart(2, '0')} ]</span>
-                {loc.isHQ && <span className="hq-badge">CORE HQ</span>}
-              </div>
-              <h3 className="card-title">{loc.country}</h3>
-              <div className="location-data">
-                <div className="location-row"><span className="loc-label">CH</span><span>{loc.phone}</span></div>
-                <div className="location-row"><span className="loc-label">IP</span><span>{loc.email}</span></div>
-                <div className="location-row"><span className="loc-label">COORD</span><span>{loc.address}</span></div>
-              </div>
-            </BentoCard>
-          ))}
-        </div>
-
-        <div className="social-strip">
-          {[
-            { label: 'WhatsApp', href: 'https://wa.me/5078345060' },
-            { label: 'Telegram', href: 'https://t.me/FACEXCONSULTING' },
-            { label: 'LinkedIn', href: 'https://www.linkedin.com/company/facexconsulting' },
-            { label: 'ventas@facex.com', href: 'mailto:ventas@facex.com' },
-          ].map((s, i) => (
-            <React.Fragment key={i}>
-              {i > 0 && <span className="social-sep" />}
-              <a href={s.href} className="social-link hover-link" target="_blank" rel="noopener noreferrer">{s.label}</a>
-            </React.Fragment>
-          ))}
-        </div>
-      </section>
-
-      {/* ── FOOTER ── */}
-      <footer className="footer">
-        <div className="footer-inner">
-          <span className="footer-copy">// STATUS: SECURE © {new Date().getFullYear()} — Facex International Holding Inc.</span>
-          <div className="footer-links">
-            <a href="https://facex.com/politicas-de-calidad/" target="_blank" rel="noopener noreferrer">Policies</a>
-            <a href="https://facex.com/terminos-y-condiciones/" target="_blank" rel="noopener noreferrer">Terms</a>
-            <a href="https://facex.com/politica-de-privacidad/" target="_blank" rel="noopener noreferrer">Privacy</a>
+          <div className="about__rows">
+            {[
+              {
+                code: 'ADN: 001', label: 'MISIÓN',
+                title: 'Excelencia en Gestión',
+                text: 'Prestar servicios de consultoría integrales, adaptables y diferenciados, generando valor para nuestros grupos de interés y enfocados en superar las expectativas de nuestros clientes.'
+              },
+              {
+                code: 'ADN: 002', label: 'VISIÓN',
+                title: 'Liderazgo Global',
+                text: 'Ser reconocidos como empresa de consultoría con altos niveles de profesionalismo, excelencia y calidad de resultados, posicionándonos como líderes con proyección internacional.'
+              },
+              {
+                code: 'ADN: 003', label: 'VALORES',
+                title: 'Principios Fundamentales',
+                text: 'Excelencia — Sinergia — Excedente de Valor — Integridad — Innovación — Tenacidad. Trabajamos y nos preparamos para hacerlo mejor cada vez.'
+              },
+            ].map((item, i) => (
+              <motion.div
+                key={i}
+                className="about__row"
+                initial={{ opacity: 0 }}
+                whileInView={{ opacity: 1 }}
+                viewport={{ once: true, margin: '-20px' }}
+                transition={{ duration: 0.8, delay: i * 0.12 }}
+              >
+                <div className="about__row-meta">
+                  <span className="about__row-code">[ {item.code} ]</span>
+                  <span className="about__row-label">{item.label}</span>
+                </div>
+                <div className="about__row-body">
+                  <h3 className="about__row-title">{item.title}</h3>
+                  <p className="about__row-text">{item.text}</p>
+                </div>
+              </motion.div>
+            ))}
           </div>
         </div>
+      </section>
+
+      {/* ══════════════════════════════════════
+          SERVICES
+          ══════════════════════════════════════ */}
+      <section className="section section--alt" id="services">
+        <div className="section__inner">
+          <header className="section__header">
+            <FadeIn>
+              <span className="section__tag">[ Servicios de Consultoría ]</span>
+            </FadeIn>
+            <Line delay={0.1} />
+            <div className="section__title-wrap">
+              <WordReveal text="Consultoría Especializada" delay={0.2} className="section__title" />
+            </div>
+            <FadeIn delay={0.4}>
+              <p className="section__sub">
+                Soluciones innovadoras, oportunas y orientadas a resultados prácticos y medibles.
+              </p>
+            </FadeIn>
+          </header>
+
+          <div className="svc-grid">
+            {services.map((svc, i) => (
+              <ServiceCard key={i} service={svc} index={i} />
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ══════════════════════════════════════
+          SECTORS
+          ══════════════════════════════════════ */}
+      <section className="section" id="sectors">
+        <div className="section__inner">
+          <header className="section__header">
+            <FadeIn>
+              <span className="section__tag">[ Experiencia Sectorial ]</span>
+            </FadeIn>
+            <Line delay={0.1} />
+            <div className="section__title-wrap">
+              <WordReveal text="Sectores" delay={0.2} className="section__title" />
+            </div>
+          </header>
+
+          <div className="sectors">
+            {sectors.map((name, i) => (
+              <motion.div
+                key={i}
+                className="sector"
+                initial={{ opacity: 0, x: -16 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true, margin: '-10px' }}
+                transition={{ duration: 0.6, delay: i * 0.07 }}
+              >
+                <span className="sector__num">{String(i + 1).padStart(2, '0')}</span>
+                <span className="sector__name">{name}</span>
+                <span className="sector__arrow">→</span>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ══════════════════════════════════════
+          VALUE PROPS
+          ══════════════════════════════════════ */}
+      <section className="section section--alt">
+        <div className="section__inner">
+          <header className="section__header">
+            <FadeIn>
+              <span className="section__tag">[ Propuesta de Valor ]</span>
+            </FadeIn>
+            <Line delay={0.1} />
+            <div className="section__title-wrap">
+              <WordReveal text="Por qué FACEX" delay={0.2} className="section__title" />
+            </div>
+          </header>
+
+          <div className="value-grid">
+            {[
+              { title: "Experiencia Internacional", desc: "Más de 30 años diseñando y aplicando servicios de consultoría en diversos países e industrias." },
+              { title: "Alta Especialización", desc: "Empresa mediana con alto nivel de especialización, a diferencia de grandes corporaciones generalistas." },
+              { title: "Equipo Multidisciplinario", desc: "Consultores del más alto nivel especializados en diversas disciplinas con presencia local en cada país." },
+              { title: "Metodología Probada", desc: "Metodologías aplicadas en más de 200 clientes y 300 proyectos, basadas en esquemas de clase mundial." },
+              { title: "Oficina PMO", desc: "FACEX PMO garantiza una óptima gestión de todos los proyectos desarrollados por nuestra empresa." },
+              { title: "Énfasis en Resultados", desc: "Alta dedicación, esfuerzo y compromiso con el éxito de cada proyecto de consultoría." },
+            ].map((v, i) => (
+              <motion.div
+                key={i}
+                className="value-card"
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: '-10px' }}
+                transition={{ duration: 0.7, delay: i * 0.08 }}
+              >
+                <span className="value-card__code">[ {String(i + 1).padStart(2, '0')} ]</span>
+                <h4 className="value-card__title">{v.title}</h4>
+                <p className="value-card__text">{v.desc}</p>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ══════════════════════════════════════
+          CONTACT / LOCATIONS
+          ══════════════════════════════════════ */}
+      <section className="section" id="contact">
+        <div className="section__inner">
+          <header className="section__header">
+            <FadeIn>
+              <span className="section__tag">[ Presencia Global ]</span>
+            </FadeIn>
+            <Line delay={0.1} />
+            <div className="section__title-wrap">
+              <WordReveal text="Nuestras Oficinas" delay={0.2} className="section__title" />
+            </div>
+            <FadeIn delay={0.4}>
+              <p className="section__sub">
+                Con más de 30 años de trayectoria, lideramos la transformación empresarial
+                en Latinoamérica desde 6 países estratégicos.
+              </p>
+            </FadeIn>
+          </header>
+
+          <div className="locations-grid">
+            {locations.map((loc, i) => (
+              <motion.div
+                key={i}
+                className="loc-card"
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: '-10px' }}
+                transition={{ duration: 0.7, delay: i * 0.08 }}
+              >
+                <div className="loc-card__header">
+                  <h3 className="loc-card__country">{loc.country}</h3>
+                  {loc.isHQ && <span className="loc-card__badge">HQ</span>}
+                </div>
+                <dl className="loc-card__data">
+                  <div className="loc-card__row">
+                    <dt>Teléfono</dt>
+                    <dd>{loc.phone}</dd>
+                  </div>
+                  <div className="loc-card__row">
+                    <dt>Email</dt>
+                    <dd>{loc.email}</dd>
+                  </div>
+                  <div className="loc-card__row">
+                    <dt>Dirección</dt>
+                    <dd>{loc.address}</dd>
+                  </div>
+                </dl>
+              </motion.div>
+            ))}
+          </div>
+
+          {/* Social strip */}
+          <div className="social-strip">
+            {[
+              { label: 'WhatsApp', href: 'https://wa.me/5078345060' },
+              { label: 'Telegram', href: 'https://t.me/FACEXCONSULTING' },
+              { label: 'LinkedIn', href: 'https://www.linkedin.com/company/facexconsulting' },
+              { label: 'ventas@facex.com', href: 'mailto:ventas@facex.com' },
+            ].map((s, i) => (
+              <React.Fragment key={i}>
+                {i > 0 && <span className="social-strip__sep" aria-hidden="true" />}
+                <a href={s.href} className="social-strip__link" target={s.href.startsWith('mailto') ? undefined : '_blank'} rel="noopener noreferrer">
+                  {s.label}
+                </a>
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ══════════════════════════════════════
+          FOOTER
+          ══════════════════════════════════════ */}
+      <footer className="footer">
+        <div className="footer__inner">
+          <span className="footer__copy">
+            © {new Date().getFullYear()} Facex International Holding Inc. Todos los derechos reservados.
+          </span>
+          <nav className="footer__links" aria-label="Footer navigation">
+            <a href="https://facex.com/politicas-de-calidad/" target="_blank" rel="noopener noreferrer">Políticas</a>
+            <a href="https://facex.com/terminos-y-condiciones/" target="_blank" rel="noopener noreferrer">Términos</a>
+            <a href="https://facex.com/politica-de-privacidad/" target="_blank" rel="noopener noreferrer">Privacidad</a>
+          </nav>
+        </div>
       </footer>
+
+      {/* ══════════════════════════════════════
+          WHATSAPP FLOATING BUTTON
+          ══════════════════════════════════════ */}
+      <motion.a
+        href="https://wa.me/5078345060"
+        className="wa-float"
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="Contactar por WhatsApp"
+        initial={{ opacity: 0, scale: 0.5 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ delay: 2, duration: 0.5, ease: 'backOut' }}
+        whileHover={{ scale: 1.1 }}
+        whileTap={{ scale: 0.95 }}
+      >
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+        </svg>
+        <span>WhatsApp</span>
+      </motion.a>
     </>
   );
 }
-
-export default App;
